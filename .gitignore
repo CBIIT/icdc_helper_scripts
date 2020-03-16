@@ -1,3 +1,5 @@
 venv/
 tmp/
 *.pyc
+config/config-uat.json
+config/config-prod.json

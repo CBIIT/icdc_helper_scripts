@@ -1,0 +1,29 @@
+{
+	"region": "us-east-1",
+
+	"useProd": false,
+
+	"secretName": "Okta-Secrets",
+
+	"oktaAuthUrl": "https://bioappdev.okta.com/oauth2/your_api_key/v1/token",
+
+	"matchBaseUrl": "https://api.match-uat.nci.nih.gov/api/v1",
+
+	"arms": [
+		{
+			"armId": "EAY131-Z1D",
+			"phsId": "phs001859",
+			"pubmedId": 31765263,
+			"bucketName": "amit-gallery"
+		},
+		{
+			"armId": "EAY131-Q",
+			"phsId": "phs001926",
+			"pubmedId": 31504139,
+			"bucketName": "amit-gallery"
+		}
+	],
+
+	"domain": "trialcommons.cancer.gov",
+	"cipher_key": 1
+}
