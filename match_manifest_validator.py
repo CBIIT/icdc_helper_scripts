@@ -4,7 +4,9 @@ import os
 
 import requests
 
-from bento.common.utils import get_logger, get_md5, get_stream_md5
+from bento.common.utils import get_logger, get_md5, get_stream_md5, get_time_stamp, LOG_PREFIX
+if LOG_PREFIX not in os.environ:
+    os.environ[LOG_PREFIX] = 'Match_Manifest_Validator'
 from bento.common.s3 import S3Bucket
 from bento.common.secrets import get_secret
 from bento.common.simple_cipher import SimpleCipher
@@ -16,21 +18,26 @@ S3_PREFIX = 's3://'
 S3_DELIMITER = '/'
 BUCKET = 'bucket'
 KEY = 'key'
-EXISTS = 'File exists'
-MD5_CORRECT = 'MD5 correct'
-MATCH_MD5_CORRECT = 'MATCH MD5 correct'
-PATIENT_CORRECT = 'Patient correct'
+EXISTS = 'File_Presence'
+MD5_CORRECT = 'MD5_Correct'
+MATCH_MD5_CORRECT = 'MATCH_MD5_Correct'
+PATIENT_CORRECT = 'Patient_File_Association_Correct'
+
 
 FILE_NAME = 'file_name'
 MD5 = 'md5sum'
 PSN = 'patientSequenceNumber'
 FILE_TYPE = 'file_type'
+VERSION = 'version'
+NUM_FILE_TYPES = 5
 
-
+UUID = 'uuid'
+SIZE = 'size'
+RESULT = 'Validation_result'
 
 PATIENTS_API_PATH = 'patients'
 DOWNLOAD_API_PATH = 'download_url'
-
+ARM_API_PATH = 'treatment_arms'
 
 
 class ManifestValidator:
@@ -40,7 +47,7 @@ class ManifestValidator:
         self.log = get_logger('Manifest_Validator')
         self.s3_buckets = {}
 
-    def validate(self, match_url, token, cipher_key):
+    def validate(self, match_url, token, cipher_key, arms):
         '''
         Validate manifest return True only if every file passed validation
 
@@ -54,24 +61,42 @@ class ManifestValidator:
         self.token = token
         assert isinstance(cipher_key, int)
         self.cipher = SimpleCipher(cipher_key)
+        assert isinstance(arms, list)
+        self.arms = arms
 
-        self.results = []
         self.patients = {}
         self.patients_info = {}
+        field_names = [FILE_NAME, PSN, UUID, SIZE, MD5, RESULT, EXISTS, MD5_CORRECT, MATCH_MD5_CORRECT, PATIENT_CORRECT]
+        result_file = f'tmp/Validation_Result_{get_time_stamp()}.csv'
         with open(self.file_name) as in_file:
             reader = csv.DictReader(in_file, delimiter='\t')
-            for obj in reader:
-                self.results.append(self.validate_file(obj))
+            with open(result_file, 'w') as out_file:
+                writer = csv.DictWriter(out_file, fieldnames=field_names)
+                writer.writeheader()
+                for obj in reader:
+                    result = self.validate_file(obj)
+                    writer.writerow(result)
+
+        if not self.validate_patient_count():
+            self.log.error('Validate patient count failed!')
 
         if not self.validate_patient_file_count():
-            self.log.error('Patient file count failed!')
+            self.log.error('Validate patient file count failed!')
 
     def validate_file(self, obj):
-        result = {}
-        # result[EXISTS] = self.validate_file_exists(obj)
-        # result[MD5_CORRECT] = self.validate_file_md5(obj)
-        # result[PATIENT_CORRECT] = self.validate_file_patient(obj)
+        result = {
+            FILE_NAME: obj[FILE_NAME],
+            PSN: obj[PSN],
+            UUID: obj[UUID],
+            SIZE: obj[SIZE],
+            MD5: obj[MD5]
+        }
+        result[EXISTS] = self.validate_file_exists(obj)
+        result[PATIENT_CORRECT] = self.validate_file_patient(obj)
+        result[MD5_CORRECT] = self.validate_file_md5(obj)
         result[MATCH_MD5_CORRECT] = self.validate_match_file_md5(obj)
+
+        result[RESULT] = result[EXISTS] and result[PATIENT_CORRECT] and result[MD5_CORRECT] and result[MATCH_MD5_CORRECT]
         return result
 
     def validate_patient_file_count(self):
@@ -79,10 +104,86 @@ class ManifestValidator:
         Validate number of files a patient has, return False if there are duplicated files or missing files
         Same patient should not have two same files, and one patient should have at least 5 files
 
-        :return: boolea
+        :return: boolean
         '''
-        return False
+        result = True
+        for patient, file_types in self.patients.items():
+            if len(file_types) != NUM_FILE_TYPES:
+                self.log.error(f'Patient {patient} has {len(file_types)} file types instead of {NUM_FILE_TYPES}')
+                result = False
+            for type, files in file_types.items():
+                for file_name, count in files.items():
+                    if count != 1:
+                        self.log.error(f'There are {count} copy of file "{file_name}" for patient "{patient}"')
+                        result = False
 
+        self.log_validation_result('Patient\'s file count', result)
+        return result
+
+    def validate_patient_count(self):
+        '''
+        Validate patients in manifest exactly match given arm's patient list (patients with valid slot)
+        Must call after validate_file_patient()!
+
+        :return: boolean
+        '''
+        result = True
+        all_patients = set()
+        for arm_id in self.arms:
+            patients = self.get_patients_for_arm(arm_id)
+            all_patients = all_patients.union(patients)
+
+        for patient in self.patients.keys():
+            if patient not in all_patients:
+                self.log.error(f'Patient "{patient}" is not a validate patient in given arms: {self.arms}')
+                result = False
+
+        for patient in all_patients:
+            if patient not in self.patients:
+                self.log.error(f'Patient "{patient}" is missing in the manifest!')
+                result = False
+
+        if result:
+            self.log_validation_result('Patient count', result)
+        return result
+
+    def _retrieve_arm_info(self, arm_id):
+        '''
+        Retrieve arm information from Match API, return latest version of the arm
+
+        :param arm_id:
+        :return: dict contains information of latest version of the arm
+        '''
+        arm_url = f'{self.match_url}/{ARM_API_PATH}/{arm_id}'
+
+        headers = {'Authorization': self.token}
+        arm_result = requests.get(arm_url, headers=headers)
+
+        arms = arm_result.json()
+        arm_info = None
+        for arm in arms:
+            current_version = arm.get(VERSION)
+            if not arm_info or current_version > arm_info[VERSION]:
+                arm_info = arm
+
+        return arm_info
+
+    def get_patients_for_arm(self, arm_id):
+        """
+        This function gets a set of patient IDs for an arm
+
+        :param arm_id:
+        :return: list of IDs (string)
+        """
+        assert isinstance(arm_id, str)
+        patients = set()
+        arm = self._retrieve_arm_info(arm_id)
+        for patient in arm.get('summaryReport', {}).get('assignmentRecords', []):
+            slot = int(patient.get('slot', -1))
+            if slot > 0:
+                patients.add(patient.get('patientSequenceNumber'))
+
+        return patients
 
     def validate_file_patient(self, obj):
         patient_id = self.cipher.simple_decipher(obj[PSN])
@@ -99,7 +200,12 @@ class ManifestValidator:
 
         s3_path = self.get_match_file_path(patient_id, file_type, file_name)
         org_name = os.path.basename(s3_path)
-        return org_name == file_name
+        result = org_name == file_name
+        if not result:
+            self.log.error('File name error!')
+        self.log_validation_result(f'Patient "{patient_id}" has file "{file_name}"', result)
+        return result
+
 
     def get_match_file_path(self, patient_id, file_type, file_name):
         patient_info = self.get_patient_meta_data(patient_id)
@@ -149,13 +255,18 @@ class ManifestValidator:
 
     def validate_match_file_md5(self, obj):
         url = self.get_signed_url(obj)
+        if not url:
+            self.log_validation_result(f'MD5 for original MATCH file {obj[FILE_NAME]}', False)
+            return False
         with requests.get(url, stream=True) as r:
             # If Error is found and we are in Prod Print and Exit
             if r.status_code >= 400:
-                self.log.error(f'Http Error Code {r.status_code} for file {obj[FILE_NAME]}')
+                self.log.error(f'Validating MD5 for original MATCH file {obj[FILE_NAME]} Failed: {r.reason}')
                 return False
             match_md5 = get_stream_md5(r.raw)
-            return match_md5 == obj[MD5]
+            result = match_md5 == obj[MD5]
+            self.log_validation_result(f'MD5 for original MATCH file {obj[FILE_NAME]}', result)
+            return result
 
 
     def get_signed_url(self, obj):
@@ -170,7 +281,8 @@ class ManifestValidator:
         }
         r = requests.post(url, json=query, headers=headers)
         if r.status_code >= 400:
-            raise Exception(f'Can NOT retrieve signed URL for {patient_id}: {s3_url}')
+            self.log.error(f'Couldn\'t get signed URL for {patient_id}: "{s3_url}"' )
+            return None
         # Add a dictionary item for the file object
         return r.json()['download_url']
 
@@ -182,8 +294,10 @@ class ManifestValidator:
         return result
 
     def log_validation_result(self, validation, result):
-        msg = 'Succeeded!' if result else 'Failed!'
-        self.log.info(f'Validating {validation}: {msg}')
+        if result:
+            self.log.info(f'Validating {validation}: Succeeded!')
+        else:
+            self.log.error(f'Validating {validation}: Failed!')
 
     def get_s3_bucket(self, bucket):
         '''
@@ -233,7 +347,6 @@ def main():
     args = parser.parse_args()
 
     config = Config(args.config_file)
-    log = get_logger('MATCH-Validator')
 
     secrets = get_secret(config.region, config.secret_name)
     token = get_okta_token(secrets, config.okta_auth_url)
@@ -241,7 +354,7 @@ def main():
         raise Exception('Failed to obtain a token!')
 
     manifest = ManifestValidator(args.manifest)
-    manifest.validate(config.match_base_url, token, config.cipher_key)
+    manifest.validate(config.match_base_url, token, config.cipher_key, [arm.arm_id for arm in config.arms])
 
 
 
