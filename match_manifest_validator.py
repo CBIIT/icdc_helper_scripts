@@ -241,16 +241,20 @@ class ManifestValidator:
         info = self.get_s3_file_info(obj[FILE_LOCATION])
         bucket = self.get_s3_bucket(info[BUCKET])
         tmp_file = os.path.join('tmp', info[FILE_NAME])
-        bucket.download_file(info[KEY], tmp_file)
+        try:
+            bucket.download_file(info[KEY], tmp_file)
 
-        if os.path.isfile(tmp_file):
-            local_md5 = get_md5(tmp_file)
-            os.remove(tmp_file)
-            result = local_md5 == obj[MD5]
-            self.log_validation_result(f'{obj[FILE_LOCATION]} MD5', result)
-            return result
-        else:
-            self.log.error(f'Download {info[KEY]} failed!')
+            if os.path.isfile(tmp_file):
+                local_md5 = get_md5(tmp_file)
+                os.remove(tmp_file)
+                result = local_md5 == obj[MD5]
+                self.log_validation_result(f'{obj[FILE_LOCATION]} MD5', result)
+                return result
+            else:
+                self.log.error(f'Download {info[KEY]} failed!')
+                return False
+        except:
+            self.log.error(f'Download file "{info[KEY]}" failed!')
             return False
 
     def validate_match_file_md5(self, obj):
