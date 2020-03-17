@@ -91,9 +91,9 @@ class ManifestValidator:
             SIZE: obj[SIZE],
             MD5: obj[MD5]
         }
-        result[EXISTS] = self.validate_file_exists(obj)
         result[PATIENT_CORRECT] = self.validate_file_patient(obj)
-        result[MD5_CORRECT] = self.validate_file_md5(obj)
+        result[EXISTS] = self.validate_file_exists(obj)
+        result[MD5_CORRECT] = self.validate_file_md5(obj) if result[EXISTS] else False
         result[MATCH_MD5_CORRECT] = self.validate_match_file_md5(obj)
 
         result[RESULT] = result[EXISTS] and result[PATIENT_CORRECT] and result[MD5_CORRECT] and result[MATCH_MD5_CORRECT]
