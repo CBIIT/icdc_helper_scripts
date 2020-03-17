@@ -15,10 +15,7 @@
 	{% set bucket = bucket_name %}
 	{%- for item in range(arm|length) -%}		
 		{
-			"armId": "{{arm[item]}}",
-			"phsId": "{{phs[item]}}",
-            "pubmedId": 1234,
-			"bucketName": "{{bucket[item]}}"
+			"armId": "{{arm[item]}}"
         }
 		{%- if not loop.last -%}
       	,

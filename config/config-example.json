@@ -11,16 +11,10 @@
 
 	"arms": [
 		{
-			"armId": "EAY131-Z1D",
-			"phsId": "phs001859",
-			"pubmedId": 31765263,
-			"bucketName": "amit-gallery"
+			"armId": "EAY131-Z1D"
 		},
 		{
-			"armId": "EAY131-Q",
-			"phsId": "phs001926",
-			"pubmedId": 31504139,
-			"bucketName": "amit-gallery"
+			"armId": "EAY131-Q"
 		}
 	],
 

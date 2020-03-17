@@ -6,10 +6,6 @@ from bento.common.utils import get_logger, removeTrailingSlash
 class Arm:
     def __init__(self, obj):
         self.arm_id = obj['armId']
-        self.phs_id = obj['phsId']
-        self.pubmed_id = obj['pubmedId']
-        self.bucket_name = obj['bucketName']
-
 
 class Config:
     def __init__(self, file_name):
