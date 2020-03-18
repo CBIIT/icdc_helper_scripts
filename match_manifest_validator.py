@@ -1,6 +1,7 @@
 import argparse
 import csv
 import os
+from timeit import default_timer as timer
 
 import requests
 
@@ -55,6 +56,11 @@ class ManifestValidator:
         :param token: Okta token to connect to NCI-MATCH
         :return:
         '''
+        start_time = timer()
+        file_validated = 0
+        validation_succeeded = 0
+
+
         assert isinstance(match_url, str) and match_url
         self.match_url = match_url
         assert token
@@ -71,10 +77,14 @@ class ManifestValidator:
         with open(self.file_name) as in_file:
             reader = csv.DictReader(in_file, delimiter='\t')
             with open(result_file, 'w') as out_file:
+                self.log.info(f'Validation result file: {result_file}')
                 writer = csv.DictWriter(out_file, fieldnames=field_names)
                 writer.writeheader()
                 for obj in reader:
                     result = self.validate_file(obj)
+                    file_validated += 1
+                    if result[RESULT]:
+                        validation_succeeded += 1
                     writer.writerow(result)
 
         if not self.validate_patient_count():
@@ -82,6 +92,10 @@ class ManifestValidator:
 
         if not self.validate_patient_file_count():
             self.log.error('Validate patient file count failed!')
+
+        end_time = timer()
+        self.log.info(f'Running time: {end_time - start_time:.2f} seconds')
+        self.log.info(f'Files processed: {file_validated}, validation succeeded: {validation_succeeded}')
 
     def validate_file(self, obj):
         result = {
