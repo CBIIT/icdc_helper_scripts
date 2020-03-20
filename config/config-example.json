@@ -9,6 +9,8 @@
 
 	"matchBaseUrl": "https://api.match-uat.nci.nih.gov/api/v1",
 
+	"API_URL": "https://trialcommons-dev.cancer.gov/v1/graphql/",
+
 	"arms": [
 		{
 			"armId": "EAY131-Z1D"

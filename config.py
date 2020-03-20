@@ -34,6 +34,9 @@ class Config:
         # Get the Match UAT Treatment Arm Api URL
         self.match_base_url = removeTrailingSlash(self.data['matchBaseUrl'])
 
+        # Get CTDC API URL
+        self.api_url = self.data['API_URL']
+
         if self.use_prod == False:
             self.log.info('Using Match UAT Environment')
         else:
