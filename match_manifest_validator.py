@@ -73,7 +73,7 @@ class ManifestValidator:
         self.patients = {}
         self.patients_info = {}
         field_names = [FILE_NAME, PSN, UUID, SIZE, MD5, RESULT, EXISTS, MD5_CORRECT, MATCH_MD5_CORRECT, PATIENT_CORRECT]
-        result_file = f'tmp/Validation_Result_{get_time_stamp()}.csv'
+        result_file = f'tmp/Manifest_Validation_Result_{get_time_stamp()}.csv'
         with open(self.file_name) as in_file:
             reader = csv.DictReader(in_file, delimiter='\t')
             with open(result_file, 'w') as out_file:
