@@ -51,6 +51,7 @@ parser.add_argument("--file", required=True, type=str, help="Name of  Manifest F
 #Start Index of File Processing, defaults to start of file
 parser.add_argument("--start_row", nargs='?',type=int, help="Starting (0-indexed) Index of file processing",const=0, default=0)
 parser.add_argument("--num_rows", type=int, help="Number of rows to process")
+parser.add_argument("--md5_blocksize", type=int, help="Size for calculating Md5 in Bytes")
 
 args = parser.parse_args()
 # datetime object containing current date and time
@@ -83,6 +84,12 @@ try:
     list_filesize_calc=[]
     list_pass_fail=[]
 
+    if args.md5_blocksize is not None:
+        BLK_SIZE = args.md5_blocksize
+    else:
+        # Setting Block Size to 1MB
+        BLK_SIZE = 1000000
+    print(f'Block Size {BLK_SIZE}')    
     for index, row in df_interest.iterrows(): 
 
         #Get the Location, Md5 Sum and Filesize
@@ -98,8 +105,7 @@ try:
         #if(index==1):
         download_s3_file(bucket,key,file_name)
 
-        # Setting Block Size to 1MB
-        BLK_SIZE = 1000000
+        
         # Get absolute filepath
         filepath = Path(file_name).resolve()
         # Get file size of file On Disk
