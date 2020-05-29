@@ -59,6 +59,7 @@ now = datetime.now()
 dt_string = now.strftime("%d%m/%Y %H:%M:%S")
 message='\n**** Starting File Processing at '+ get_time()+' ******'
 print (message)
+statusFile = f'status_{get_time()}.txt'
 
 try:
     df = pd.read_csv(args.file,sep='\t',header = 0)
@@ -72,7 +73,8 @@ try:
     # If length goes past last row cap it at last row
     if end_row  > df.shape[0]:
         end_row=df.shape[0]
-        
+
+    total_rows = end_row-start_row    
     #print(f'end_row:{end_row} ')
     # Retrieving the Files of interest
     df_interest = df[start_row:end_row]
@@ -90,8 +92,10 @@ try:
         # Setting Block Size to 1MB
         BLK_SIZE = 1000000
     print(f'Block Size {BLK_SIZE}')    
+    fileCount=0
     for index, row in df_interest.iterrows(): 
 
+        fileCount+=1
         #Get the Location, Md5 Sum and Filesize
         file_location= row['file_location']
 
@@ -131,6 +135,11 @@ try:
             list_pass_fail.append('Fail')
         print(message)
         os.remove(file_name)
+        # Writing Debug Message into Status File
+        with open(statusFile ,'a+') as file:
+            content=f'\nProcessed File {fileCount} of {total_rows}.'
+            content+=message
+            file.write(content)
 except Exception as e:
     print(e)       
     
