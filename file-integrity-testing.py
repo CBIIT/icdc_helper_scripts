@@ -97,7 +97,7 @@ try:
 
         fileCount+=1
         #Get the Location, Md5 Sum and Filesize
-        file_location= row['file_location']
+        file_location= row['file_locations']
 
         # Fake File Location
         #file_location= 's3://amit-gallery/MSN14613/IonXpress_057_rawlib.bam'
