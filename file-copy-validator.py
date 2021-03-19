@@ -21,6 +21,8 @@ log = get_logger('Validator')
 
 SUCCEEDED = 'Succeeded'
 FAILED = 'Failed'
+tmp_folder = 'tmp'
+PREVIOUSE_VALIDATED = ': in previous validation'
 
 
 # Input like s3://some/path(/)
@@ -72,34 +74,70 @@ def validate_file(s3, file, src_bucket, dest_bucket):
 
 def main():
     parser = argparse.ArgumentParser(description='Script to validate file copying')
-    parser.add_argument('-sp', '--src-path', required=True, help='Source S3 bucket name and optional path')
-    parser.add_argument('-db', '--dest-bucket', required=True, help='Destination S3 bucket name')
+    parser.add_argument('-sp', '--src-path', help='Source S3 bucket name and optional path')
+    parser.add_argument('-db', '--dest-bucket', help='Destination S3 bucket name')
+    parser.add_argument('-pf', '--previous-file', type=argparse.FileType('r'), help='Previous output CSV file of this script')
     args = parser.parse_args()
-
-    source_path = removeTrailingSlash(args.src_path)
-    dest_bucket = removeTrailingSlash(args.dest_bucket)
-    src_bucket, s3_path = split_s3_path(source_path)
-    tmp_folder = 'tmp'
     fieldnames = ['src_bucket', 'dest_bucket', 'file_name', 'file_size', 'result', 'reason']
+    s3 = boto3.client('s3')
 
-    log.info(f"Source bucket: {src_bucket}")
-    log.info(f"Dest   bucket: {dest_bucket}")
-    log.info(f"Prefix: {s3_path}")
+    # Revalidate a previous validation file
+    if args.previous_file:
+        log.info(f'Previous validation file: {args.previous_file.name}')
+        reader = csv.DictReader(args.previous_file)
+        file_list = []
+
+        for obj in reader:
+            src_bucket = obj['src_bucket']
+            dest_bucket = obj['dest_bucket']
+            if obj['result'] == SUCCEEDED:
+                if not obj['reason'].endswith(PREVIOUSE_VALIDATED):
+                    obj['reason'] += PREVIOUSE_VALIDATED
+                file_list.append(obj)
+            else:
+                file = s3.head_object(Bucket=src_bucket, Key=obj['file_name'])
+                file['Size'] = file['ContentLength']
+                file['Key'] = obj['file_name']
+                file_list.append(file)
+
+    else:
+        if not args.src_path or not args.dest_bucket:
+            log.error('Source S3 path and Destination S3 bucket are required!')
+            return
+        source_path = removeTrailingSlash(args.src_path)
+        dest_bucket = removeTrailingSlash(args.dest_bucket)
+        src_bucket, s3_path = split_s3_path(source_path)
+
+        log.info(f"Source bucket: {src_bucket}")
+        log.info(f"Dest   bucket: {dest_bucket}")
+        log.info(f"Prefix: {s3_path}")
+
+        file_list = list_files(s3, src_bucket, s3_path)
+
+    num_files = len(file_list)
+    log.info(f"There are {num_files} files to compare")
+
     os.makedirs(tmp_folder, exist_ok=True)
     output_file = f'{tmp_folder}/copy-file-validation-{get_time_stamp()}.csv'
     with open(output_file, 'w') as of:
-        s3 = boto3.client('s3')
         writer = csv.DictWriter(of, fieldnames=fieldnames)
         writer.writeheader()
 
-        file_list = list_files(s3, src_bucket, s3_path)
-        num_files = len(file_list)
-        log.info(f"There are {num_files} files to compare")
         counter = 0
         total_size = 0
         for file in file_list:
-            file_size = file['Size']
             counter += 1
+
+            # These files has been successfully validated last time
+            if 'result' in file:
+                writer.writerow(file)
+                file_size = int(file['file_size'])
+                total_size += file_size
+                log.info(f"Valiating file {counter}/{num_files} ({format_bytes(file_size)}): {file['file_name']}")
+                log.info('Validated in previous run')
+                continue
+
+            file_size = file['Size']
             total_size += file_size
             try:
                 log.info(f'Valiating file {counter}/{num_files} ({format_bytes(file_size)}): {file["Key"]}')
@@ -111,9 +149,9 @@ def main():
                 message = e
 
             if result == SUCCEEDED:
-                log.info(f"result: {result}, message: {message}")
+                log.info(f"{result}: {message}")
             else:
-                log.error(f"result: {result}, message: {message}")
+                log.error(f"{result}: {message}")
             log.info(f"Total Verified file size: {format_bytes(total_size)}")
             writer.writerow({
                 'src_bucket': src_bucket,
