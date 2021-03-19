@@ -19,6 +19,9 @@ if LOG_PREFIX not in os.environ:
 os.environ[APP_NAME] = 'File_copy_validator'
 log = get_logger('Validator')
 
+SUCCEEDED = 'Succeeded'
+FAILED = 'Failed'
+
 
 # Input like s3://some/path(/)
 def split_s3_path(s3_path):
@@ -35,30 +38,35 @@ def compare_md5(s3, src_bucket, dest_bucket, key):
     try:
         src_obj = s3.get_object(Bucket=src_bucket, Key=key)
         dest_obj = s3.get_object(Bucket=dest_bucket, Key=key)
+        log.info('Calculating MD5 for source file')
         src_md5 = get_stream_md5(src_obj['Body'])
+        log.info(f'Source file MD5: {src_md5}')
+        log.info('Calculating MD5 for destination file')
         dest_md5 = get_stream_md5(dest_obj['Body'])
+        log.info(f'Destination file MD5: {dest_md5}')
         if src_md5 == dest_md5:
-            return 'Succeeded', 'MD5s match'
+            return SUCCEEDED, 'MD5s match'
         else:
-            return 'Failed', "MD5s don't match"
+            return FAILED, "MD5s don't match"
     except Exception as e:
         log.exception(e)
-        return 'Failed', e
+        return FAILED, e
 
 def validate_file(s3, file, src_bucket, dest_bucket):
     try:
         target = s3.head_object(Bucket=dest_bucket, Key=file['Key'])
     except ClientError as e:
-        return 'Failed', f"{e.response['Error']['Code']}: {e.response['Error']['Message']}"
+        return FAILED, f"{e.response['Error']['Code']}: {e.response['Error']['Message']}"
     except Exception as e:
-        return 'Failed', e
+        return FAILED, e
 
     if file['ETag'] == target['ETag']:
-        return 'Succeeded', 'ETags match'
+        return SUCCEEDED, 'ETags match'
     elif file['Size'] == target['ContentLength']:
+        log.info("ETags don't match, calculating MD5")
         return compare_md5(s3, src_bucket, dest_bucket, file['Key'])
     else:
-        return 'Failed', "File sizes don't match"
+        return FAILED, "File sizes don't match"
 
 
 
@@ -99,10 +107,10 @@ def main():
             except Exception as e:
                 log.exception(e)
                 log.error(f'Valiating file: {file["Key"]} failed! See errors above.')
-                result = "Failed"
+                result = FAILED
                 message = e
 
-            if result == 'Succeeded':
+            if result == SUCCEEDED:
                 log.info(f"result: {result}, message: {message}")
             else:
                 log.error(f"result: {result}, message: {message}")
@@ -115,7 +123,7 @@ def main():
                 'result': result,
                 'reason': message
             })
-        log.info("Comparing finished")
+        log.info(f"Comparing finished! Total files validated: {counter}, total file size: {format_bytes(total_size)}")
         log.info(f"Output file is at: {output_file}")
         log.info(f"Log file is at: {get_log_file()}")
 
