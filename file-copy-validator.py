@@ -10,7 +10,7 @@ import os
 import boto3
 from botocore.exceptions import ClientError
 
-from bento.common.utils import LOG_PREFIX, APP_NAME, get_stream_md5, get_logger, get_time_stamp, removeTrailingSlash, \
+from bento.common.utils import LOG_PREFIX, APP_NAME, get_md5, get_logger, get_time_stamp, removeTrailingSlash, \
                                get_log_file, format_bytes
 
 if LOG_PREFIX not in os.environ:
@@ -37,22 +37,41 @@ def list_files(s3, bucket, s3_path):
     return result.get('Contents', [])
 
 def compare_md5(s3, src_bucket, dest_bucket, key):
+    tmp_files = []
     try:
-        src_obj = s3.get_object(Bucket=src_bucket, Key=key)
-        dest_obj = s3.get_object(Bucket=dest_bucket, Key=key)
+        file_name = key.split('/')[-1]
+
         log.info('Calculating MD5 for source file')
-        src_md5 = get_stream_md5(src_obj['Body'])
+        src_file_name = 'tmp/src_' + file_name
+        log.info(f"Downloading source file to: {src_file_name}")
+        with open(src_file_name, 'wb') as data:
+            s3.download_fileobj(src_bucket, key, data)
+            tmp_files.append(src_file_name)
+        src_md5 = get_md5(src_file_name)
         log.info(f'Source file MD5: {src_md5}')
+
         log.info('Calculating MD5 for destination file')
-        dest_md5 = get_stream_md5(dest_obj['Body'])
+        dest_file_name = 'tmp/dest_' + file_name
+        log.info(f"Downloading destination file to: {dest_file_name}")
+        with open(dest_file_name, 'wb') as data:
+            s3.download_fileobj(dest_bucket, key, data)
+            tmp_files.append(dest_file_name)
+
+        dest_md5 = get_md5(dest_file_name)
         log.info(f'Destination file MD5: {dest_md5}')
-        if src_md5 == dest_md5:
-            return SUCCEEDED, 'MD5s match'
-        else:
-            return FAILED, "MD5s don't match"
     except Exception as e:
         log.exception(e)
         return FAILED, e
+    finally:
+        for file in tmp_files:
+            if os.path.isfile(file):
+                os.remove(file)
+
+    if src_md5 == dest_md5:
+        return SUCCEEDED, 'MD5s match'
+    else:
+        return FAILED, "MD5s don't match"
+
 
 def validate_file(s3, file, src_bucket, dest_bucket):
     try:
