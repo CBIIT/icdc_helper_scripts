@@ -11,7 +11,7 @@ import boto3
 from botocore.exceptions import ClientError
 
 from bento.common.utils import LOG_PREFIX, APP_NAME, get_stream_md5, get_logger, get_time_stamp, removeTrailingSlash, \
-                               get_log_file
+                               get_log_file, format_bytes
 
 if LOG_PREFIX not in os.environ:
     os.environ[LOG_PREFIX] = 'File_copy_validator'
@@ -72,7 +72,7 @@ def main():
     dest_bucket = removeTrailingSlash(args.dest_bucket)
     src_bucket, s3_path = split_s3_path(source_path)
     tmp_folder = 'tmp'
-    fieldnames = ['src_bucket', 'dest_bucket', 'file_name', 'result', 'reason']
+    fieldnames = ['src_bucket', 'dest_bucket', 'file_name', 'file_size', 'result', 'reason']
 
     log.info(f"Source bucket: {src_bucket}")
     log.info(f"Dest   bucket: {dest_bucket}")
@@ -85,22 +85,36 @@ def main():
         writer.writeheader()
 
         file_list = list_files(s3, src_bucket, s3_path)
-        log.info(f"There are {len(file_list)} files to compare")
+        num_files = len(file_list)
+        log.info(f"There are {num_files} files to compare")
+        counter = 0
+        total_size = 0
         for file in file_list:
+            file_size = file['Size']
+            counter += 1
+            total_size += file_size
             try:
-                log.info(f'Valiating file: {file["Key"]} ...')
+                log.info(f'Valiating file {counter}/{num_files} ({format_bytes(file_size)}): {file["Key"]}')
                 result, message = validate_file(s3, file, src_bucket, dest_bucket)
-                log.info(f"result: {result}, message: {message}")
-                writer.writerow({
-                    'src_bucket': src_bucket,
-                    'dest_bucket': dest_bucket,
-                    'file_name': file['Key'],
-                    'result': result,
-                    'reason': message
-                })
             except Exception as e:
                 log.exception(e)
                 log.error(f'Valiating file: {file["Key"]} failed! See errors above.')
+                result = "Failed"
+                message = e
+
+            if result == 'Succeeded':
+                log.info(f"result: {result}, message: {message}")
+            else:
+                log.error(f"result: {result}, message: {message}")
+            log.info(f"Total Verified file size: {format_bytes(total_size)}")
+            writer.writerow({
+                'src_bucket': src_bucket,
+                'dest_bucket': dest_bucket,
+                'file_name': file['Key'],
+                'file_size': file_size,
+                'result': result,
+                'reason': message
+            })
         log.info("Comparing finished")
         log.info(f"Output file is at: {output_file}")
         log.info(f"Log file is at: {get_log_file()}")
