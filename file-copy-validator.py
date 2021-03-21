@@ -33,8 +33,16 @@ def split_s3_path(s3_path):
     return bucket, key
 
 def list_files(s3, bucket, s3_path):
-    result = s3.list_objects(Bucket=bucket, Prefix=s3_path)
-    return result.get('Contents', [])
+    paginator = s3.get_paginator('list_objects')
+    pages = paginator.paginate(Bucket=bucket, Prefix=s3_path)
+
+    files = []
+    for page in pages:
+        for obj in page['Contents']:
+            files.append(obj)
+
+    return files
+
 
 def compare_md5(s3, src_bucket, dest_bucket, key):
     tmp_files = []
