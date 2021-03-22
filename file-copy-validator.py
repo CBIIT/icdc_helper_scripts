@@ -9,6 +9,7 @@ import csv
 import os
 import boto3
 from botocore.exceptions import ClientError
+from timeit import default_timer as timer
 
 from bento.common.utils import LOG_PREFIX, APP_NAME, get_md5, get_logger, get_time_stamp, removeTrailingSlash, \
                                get_log_file, format_bytes
@@ -105,6 +106,7 @@ def main():
     parser.add_argument('-db', '--dest-bucket', help='Destination S3 bucket name')
     parser.add_argument('-pf', '--previous-file', type=argparse.FileType('r'), help='Previous output CSV file of this script')
     args = parser.parse_args()
+    start_time = timer()
     fieldnames = ['src_bucket', 'dest_bucket', 'file_name', 'file_size', 'result', 'reason']
     s3 = boto3.client('s3')
 
@@ -151,6 +153,7 @@ def main():
         writer.writeheader()
 
         counter = 0
+        succeeded = 0
         total_size = 0
         for file in file_list:
             counter += 1
@@ -177,6 +180,7 @@ def main():
 
             if result == SUCCEEDED:
                 log.info(f"{result}: {message}")
+                succeeded += 1
             else:
                 log.error(f"{result}: {message}")
             log.info(f"Total Verified file size: {format_bytes(total_size)}")
@@ -188,7 +192,11 @@ def main():
                 'result': result,
                 'reason': message
             })
+
+        end_time = timer()
         log.info(f"Comparing finished! Total files validated: {counter}, total file size: {format_bytes(total_size)}")
+        log.info(f"Comparing succeeded: {succeeded} out of {num_files} files")
+        log.info(f"Running time: {end_time - start_time:.2f} seconds")
         log.info(f"Output file is at: {output_file}")
         log.info(f"Log file is at: {get_log_file()}")
 
