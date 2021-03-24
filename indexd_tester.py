@@ -20,10 +20,11 @@ parser.add_argument("--file", required=True, type=str, help="Name of IndexD Mani
 args = parser.parse_args()
 
 # This is the base URL for the Staging Environment
-BASE_URL = 'https://nci-crdc-staging.datacommons.io/user/data/download/dg.4DFC/'
+BASE_URL = 'https://nci-crdc.datacommons.io/user/data/download/'
+# BASE_URL = 'https://nci-crdc-staging.datacommons.io/user/data/download/dg.4DFC/'
 
 #File to write the Status
-statusFile = 'status.txt'
+statusFile = 'tmp/status.txt'
 # datetime object containing current date and time
 
 with open(statusFile ,'a+') as file:
@@ -51,8 +52,8 @@ with open(args.file) as tsvfile:
 			r = requests.get(url = url)
 			# extracting data in json format 
 			data = r.json()
-			#print(data['url'])
-			validate_file(data['url'],filename,statusFile)
+			print(data['url'])
+			# validate_file(data['url'],filename,statusFile)
 
 		status= True
 		print ('File Processing Complete!')
@@ -64,6 +65,7 @@ with open(args.file) as tsvfile:
 
 
 	except Exception as e:
+		print(e)
 		print ('File Processing Failed. See Status File for details.')
 		with open(statusFile ,'a+') as file:
 			file.write('\n****GUID: '+indexd_guid+' has an error ****')
