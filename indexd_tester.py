@@ -1,8 +1,43 @@
 
-import csv,requests,argparse,os
+import csv,requests,argparse,os,traceback
 from urllib.parse import urlparse
 from datetime import datetime
+##############################################################################
+# This function downloads 2 chunks of the file from a signed URL, writes it 
+# to filename and	if successful updates the statusFile
+##############################################################################
 
+def partial_download_tester(url,filename='temp', statusFile='status.txt'):
+    
+    # Make the actual request, set the timeout for no data to 10 seconds and enable streaming responses so we don't have to keep the large files in memory
+    request = requests.get(url, timeout=10, stream=True)
+    counter=0
+    CHUNK_SIZE = 1024 * 1024
+    NUM_CHUNKS = 2
+	
+    # Open the output file and make sure we write in binary mode
+    with open(filename, 'wb') as fh:
+        # Walk through the request response in chunks of 1024 * 1024 bytes, so 1MiB
+        for chunk in request.iter_content(CHUNK_SIZE):
+            # Write the chunk to the file
+            fh.write(chunk)
+            counter+=1
+			# If max number of chunks is reached, quit the loop
+            if(counter==NUM_CHUNKS):
+                             
+                #Update the status file
+                with open(statusFile ,'a+') as file:
+                    file.write('\nValidated File: '+filename)
+                break
+            
+			
+	
+    return
+
+##############################################################################
+# This function downloads the entire file from a signed URL, writes it 
+# to filename and	if successful updates the statusFile
+##############################################################################    
 def validate_file(url, filename, statusFile):
     #Get the File with a Get request and write it to a file
     print('Validating File: '+filename)
@@ -67,8 +102,8 @@ with open(args.file) as tsvfile:
 
 
     except Exception as e:
-        print(e)
         print ('File Processing Failed. See Status File for details.')
+        print("EXCEPTION TRACE  PRINT:\n{}".format( "".join(traceback.format_exception(type(e), e, e.__traceback__))))
         with open(statusFile ,'a+') as file:
             file.write('\n****GUID: '+indexd_guid+' has an error ****')
 
