@@ -91,6 +91,9 @@ with open(args.file) as tsvfile:
                 data = r.json()
                 print(data['url'])
                 # validate_file(data['url'],filename,statusFile)
+                partial_download_tester(data['url'],filename,statusFile)
+                #Delete the file once processing is completed
+                os.remove(filename)
 
         status= True
         print ('File Processing Complete!')
